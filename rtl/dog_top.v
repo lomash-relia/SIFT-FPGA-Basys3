@@ -8,16 +8,11 @@ module dog_top #(
     input  wire               rst,
     input  wire               start,
 
-    // DoG Result: Signed 9-bit (Range -255 to +255)
     output reg signed [8:0]   dog_pixel,
     output reg                dog_valid,
     output wire               done
 );
 
-    //==========================================================================
-    // Pipeline 1: Sigma 1 (Standard Gaussian)
-    // Kernel: 1, 4, 6, 4, 1 (Div 16)
-    //==========================================================================
     wire [7:0] blur1_pixel;
     wire       blur1_valid;
     wire       done1;
@@ -34,10 +29,6 @@ module dog_top #(
         .done          (done1)
     );
 
-    //==========================================================================
-    // Pipeline 2: Sigma 2 (Wider Gaussian)
-    // Kernel: 1, 2, 2, 2, 1 (Div 8) -> More blur
-    //==========================================================================
     wire [7:0] blur2_pixel;
     wire       blur2_valid;
     wire       done2;
@@ -54,22 +45,14 @@ module dog_top #(
         .done          (done2)
     );
 
-    //==========================================================================
-    // Difference Logic
-    //==========================================================================
-    // Since both pipes are identical hardware triggered by the same start signal,
-    // they will be cycle-accurate synchronized. We can simply AND the valids.
-    
     always @(posedge clk) begin
         if (rst) begin
             dog_valid <= 1'b0;
             dog_pixel <= 9'sd0;
         end
         else begin
-            // Synchronization check
             if (blur1_valid && blur2_valid) begin
                 dog_valid <= 1'b1;
-                // Signed Subtraction: Expand to 9 bits first to handle negative results
                 dog_pixel <= {1'b0, blur1_pixel} - {1'b0, blur2_pixel};
             end
             else begin
@@ -78,6 +61,6 @@ module dog_top #(
         end
     end
 
-    assign done = done1 & done2;
+    assign done = done1 && done2;
 
 endmodule

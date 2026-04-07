@@ -1,9 +1,5 @@
 `timescale 1ns / 1ps
 
-//==============================================================================
-// Image ROM - Reads 128x128 grayscale image from hex file
-// One pixel per clock when enabled. 1-cycle read latency.
-//==============================================================================
 module img_rom #(
     parameter WIDTH  = 128,
     parameter HEIGHT = 128
@@ -14,7 +10,7 @@ module img_rom #(
     output reg  [7:0]  pixel
 );
 
-    localparam TOTAL = WIDTH * HEIGHT;  // 16384
+    localparam TOTAL = WIDTH * HEIGHT; 
 
     (* ram_style = "block" *)
     reg [7:0] mem [0:TOTAL-1];

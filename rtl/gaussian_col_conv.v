@@ -3,7 +3,6 @@
 module gaussian_col_conv #(
     parameter WIDTH  = 128,
     parameter HEIGHT = 128,
-    // Default Kernel parameters
     parameter W0 = 1, 
     parameter W1 = 4, 
     parameter W2 = 6, 
@@ -28,7 +27,6 @@ module gaussian_col_conv #(
                CONV    = 2'd2;
     reg [1:0] state;
 
-    // Frame buffer (Use BRAM)
     (* ram_style = "block" *)
     reg [7:0] fbuf [0:TOTAL-1];
     
@@ -36,71 +34,38 @@ module gaussian_col_conv #(
     reg [7:0]  col;
     reg [7:0]  row;
 
-    // Tap row indices (No changes to address logic)
     wire [7:0] r0, r1, r2, r3, r4;
     assign r0 = (row < 8'd2) ? 8'd0 : (row - 8'd2);
     assign r1 = (row < 8'd1) ? 8'd0 : (row - 8'd1);
     assign r2 = row;
-    assign r3 = (row >= (HEIGHT[7:0] - 8'd1)) ? (HEIGHT[7:0] - 8'd1) : (row + 8'd1);
-    assign r4 = (row >= (HEIGHT[7:0] - 8'd2)) ? (HEIGHT[7:0] - 8'd1) : (row + 8'd2);
+    assign r3 = (row > (HEIGHT - 2)) ? (HEIGHT - 1) : (row + 8'd1);
+    assign r4 = (row > (HEIGHT - 3)) ? (HEIGHT - 1) : (row + 8'd2);
 
-    // Address calc (No changes)
-    wire [14:0] row_addr0 = {7'd0, r0} * 15'd128;
-    wire [14:0] row_addr1 = {7'd0, r1} * 15'd128;
-    wire [14:0] row_addr2 = {7'd0, r2} * 15'd128;
-    wire [14:0] row_addr3 = {7'd0, r3} * 15'd128;
-    wire [14:0] row_addr4 = {7'd0, r4} * 15'd128;
-    
-    wire [13:0] addr0 = row_addr0[13:0] + {6'd0, col};
-    wire [13:0] addr1 = row_addr1[13:0] + {6'd0, col};
-    wire [13:0] addr2 = row_addr2[13:0] + {6'd0, col};
-    wire [13:0] addr3 = row_addr3[13:0] + {6'd0, col};
-    wire [13:0] addr4 = row_addr4[13:0] + {6'd0, col};
+    wire [13:0] addr0 = r0 * WIDTH + col;
+    wire [13:0] addr1 = r1 * WIDTH + col;
+    wire [13:0] addr2 = r2 * WIDTH + col;
+    wire [13:0] addr3 = r3 * WIDTH + col;
+    wire [13:0] addr4 = r4 * WIDTH + col;
 
     reg [7:0] p0, p1, p2, p3, p4;
-    reg        pipe_valid;
-    reg        pipe_last;
-
-    // NEW: Flexible Math
-    reg [19:0] sum; // Increased width
-
+    reg pipe_valid, pipe_last;
+    
     always @(posedge clk) begin
         if (rst) begin
-            state           <= IDLE;
-            done            <= 1'b0;
+            state <= IDLE;
+            wr_addr <= 14'd0;
+            row <= 8'd0;
+            col <= 8'd0;
+            pixel_out <= 8'd0;
             pixel_out_valid <= 1'b0;
-            pixel_out       <= 8'd0;
-            wr_addr         <= 14'd0;
-            col             <= 8'd0;
-            row             <= 8'd0;
-            pipe_valid      <= 1'b0;
-            pipe_last       <= 1'b0;
-            sum             <= 0;
-            p0<=0; p1<=0; p2<=0; p3<=0; p4<=0;
-        end
-        else begin
-            done            <= 1'b0;
-            pixel_out_valid <= 1'b0;
-
-            // Pipeline stage 2: output convolved pixel
-            if (pipe_valid) begin
-                // Compute Sum with Parameters
-                sum <= (p0 * W0) + (p1 * W1) + (p2 * W2) + (p3 * W3) + (p4 * W4);
-                
-                // Output (delayed by 1 cycle relative to sum calc, 
-                // but for simple blur flow, we can output next cycle)
-                // Note: In strict pipelining, 'sum' updates this cycle, 
-                // so we output 'sum >> SHIFT' on the *next* cycle. 
-                // However, to keep your logic flow similar:
-                pixel_out       <= ((p0 * W0) + (p1 * W1) + (p2 * W2) + (p3 * W3) + (p4 * W4)) >> SHIFT;
-                
-                pixel_out_valid <= 1'b1;
-                if (pipe_last) done <= 1'b1;
-            end
-
+            done <= 1'b0;
+            pipe_valid <= 1'b0;
+            pipe_last <= 1'b0;
+        end else begin
             case (state)
                 IDLE: begin
                     pipe_valid <= 1'b0;
+                    done <= 1'b0;
                     if (start) begin
                         state   <= STORE;
                         wr_addr <= 14'd0;
@@ -111,7 +76,7 @@ module gaussian_col_conv #(
                     pipe_valid <= 1'b0;
                     if (pixel_in_valid) begin
                         fbuf[wr_addr] <= pixel_in;
-                        if (wr_addr == (TOTAL[13:0] - 14'd1)) begin
+                        if (wr_addr == (TOTAL - 1)) begin
                             state <= CONV;
                             row   <= 8'd0;
                             col   <= 8'd0;
@@ -128,16 +93,26 @@ module gaussian_col_conv #(
                     p4 <= fbuf[addr4];
 
                     pipe_valid <= 1'b1;
-                    pipe_last  <= (row == (HEIGHT[7:0] - 8'd1)) && (col == (WIDTH[7:0] - 8'd1));
+                    pipe_last  <= (row == (HEIGHT - 1)) && (col == (WIDTH - 1));
 
-                    if (col == (WIDTH[7:0] - 8'd1)) begin
+                    if (col == (WIDTH - 1)) begin
                         col <= 8'd0;
-                        if (row == (HEIGHT[7:0] - 8'd1)) state <= IDLE;
+                        if (row == (HEIGHT - 1)) state <= IDLE;
                         else row <= row + 8'd1;
+                    end else begin
+                        col <= col + 8'd1;
                     end
-                    else col <= col + 8'd1;
                 end
             endcase
+
+            if (pipe_valid) begin
+                pixel_out <= ((p0 * W0) + (p1 * W1) + (p2 * W2) + (p3 * W3) + (p4 * W4)) >> SHIFT;
+                pixel_out_valid <= 1'b1;
+                if (pipe_last) done <= 1'b1;
+            end else begin
+                pixel_out_valid <= 1'b0;
+            end
         end
     end
+
 endmodule
