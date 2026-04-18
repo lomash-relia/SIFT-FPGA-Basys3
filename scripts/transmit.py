@@ -279,104 +279,275 @@
 #     ser.close()
 #     cv2.destroyAllWindows()
 
+# import cv2
+# import serial
+# import numpy as np
+# import time
+
+# SERIAL_PORT = 'COM8' 
+# BAUD_RATE = 921600
+# SYNC_BYTE = 0x55
+# AMPLIFIER_GAIN = 8
+
+# # The exact sequence of sizes the FPGA will transmit
+# # Octave 1 (3 scales of 128x128), Octave 2 (3 scales of 64x64)
+# PYRAMID_DIMS = [(128, 128), (128, 128), (128, 128), (64, 64), (64, 64), (64, 64)]
+
+# def wait_for_sync(ser):
+#     start_time = time.time()
+#     while time.time() - start_time < 1.0:
+#         if ser.in_waiting > 0:
+#             header = ser.read(1)
+#             if header[0] == SYNC_BYTE:
+#                 return True
+#     return False
+
+# def read_dog_frame(ser, dim_tuple):
+#     w, h = dim_tuple
+#     expected_bytes = w * h
+    
+#     if not wait_for_sync(ser):
+#         return None
+
+#     raw_data = ser.read(expected_bytes)
+#     if len(raw_data) != expected_bytes:
+#         return None
+
+#     # Convert, center, and amplify
+#     dog_img = np.frombuffer(raw_data, dtype=np.uint8).reshape((h, w))
+#     dog_signed = dog_img.astype(np.int16) - 128
+#     dog_amplified = (dog_signed * AMPLIFIER_GAIN) + 128
+#     dog_final = np.clip(dog_amplified, 0, 255).astype(np.uint8)
+#     return dog_final
+
+# def run_sift_bridge():
+#     try:
+#         ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+#         print(f"Connected to {SERIAL_PORT}")
+#     except Exception as e:
+#         print(f"Connection Error: {e}")
+#         return
+
+#     cap = cv2.VideoCapture(0)
+#     time.sleep(2)
+
+#     while True:
+#         ret, frame = cap.read()
+#         if not ret: break
+
+#         # Pre-process
+#         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+#         resized = cv2.resize(gray, (128, 128), interpolation=cv2.INTER_AREA)
+#         resized[resized == SYNC_BYTE] = 0x54 # Sync protection
+
+#         # Transmit Base Image
+#         ser.write(bytearray([SYNC_BYTE]))
+#         ser.write(resized.tobytes())
+
+#         # Receive the 6 Pyramid Layers
+#         pyramid_frames = []
+#         timeout_flag = False
+        
+#         for dim in PYRAMID_DIMS:
+#             dog = read_dog_frame(ser, dim)
+#             if dog is None:
+#                 print(f"Timeout/Drop at dimension {dim}. Resetting.")
+#                 timeout_flag = True
+#                 break
+#             pyramid_frames.append(dog)
+
+#         if not timeout_flag:
+#             # Build the Display Grid
+#             # Upscale the 64x64 Octave 2 images back to 128x128 for easy viewing
+#             o1_s1, o1_s2, o1_s3 = pyramid_frames[0:3]
+#             o2_s1 = cv2.resize(pyramid_frames[3], (128, 128), interpolation=cv2.INTER_NEAREST)
+#             o2_s2 = cv2.resize(pyramid_frames[4], (128, 128), interpolation=cv2.INTER_NEAREST)
+#             o2_s3 = cv2.resize(pyramid_frames[5], (128, 128), interpolation=cv2.INTER_NEAREST)
+
+#             # Assemble Rows
+#             top_row = np.hstack((resized, o1_s1, o1_s2, o1_s3))
+#             bottom_row = np.hstack((np.zeros((128, 128), dtype=np.uint8), o2_s1, o2_s2, o2_s3))
+#             grid = np.vstack((top_row, bottom_row))
+
+#             cv2.imshow('FPGA 2-Octave, 3-Scale DoG Pyramid', grid)
+
+#         if cv2.waitKey(1) & 0xFF == ord('q'):
+#             break
+
+#     cap.release()
+#     ser.close()
+#     cv2.destroyAllWindows()
+
+# if __name__ == "__main__":
+#     run_sift_bridge()
+
+# ---------------------
+
+
+# import cv2
+# import serial
+# import numpy as np
+# import time
+
+# # -------- CONFIG --------
+# SERIAL_PORT = 'COM8'
+# BAUD_RATE = 921600
+# SYNC_BYTE = 0x55
+# IMAGE_PATH = r'D:\SIFT-FPGA-Basys3\data\image.png'
+# AMPLIFIER_GAIN = 8
+# # ------------------------
+
+# def wait_for_sync(ser):
+#     while True:
+#         b = ser.read(1)
+#         if len(b) and b[0] == SYNC_BYTE:
+#             return True
+
+# def main():
+#     # Load fixed image
+#     img = cv2.imread(IMAGE_PATH, cv2.IMREAD_GRAYSCALE)
+#     if img is None:
+#         print("Image load failed")
+#         return
+
+#     img = cv2.resize(img, (128, 128), interpolation=cv2.INTER_AREA)
+#     img[img == SYNC_BYTE] = 0x54  # sync protection
+
+#     try:
+#         ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2)
+#         print("Connected")
+#     except Exception as e:
+#         print("Serial error:", e)
+#         return
+
+#     time.sleep(2)
+
+#     while True:
+#         # Clean buffer
+#         ser.reset_input_buffer()
+
+#         # Send frame
+#         ser.write(bytearray([SYNC_BYTE]) + img.tobytes())
+
+#         # Wait for FPGA response
+#         wait_for_sync(ser)
+
+#         # Read DoG (single frame)
+#         raw = ser.read(128 * 128)
+#         if len(raw) != 128 * 128:
+#             print("Frame error")
+#             continue
+
+#         dog = np.frombuffer(raw, dtype=np.uint8).reshape((128, 128))
+
+#         # -------- IDENTICAL PROCESSING --------
+#         dog_signed = dog.astype(np.int16) - 128
+#         dog_amp = dog_signed * AMPLIFIER_GAIN
+#         dog_display = np.clip(dog_amp + 128, 0, 255).astype(np.uint8)
+#         # -------------------------------------
+
+#         combined = np.hstack((img, dog_display))
+#         cv2.imshow("RTL1: Input | DoG", combined)
+
+#         if cv2.waitKey(0) & 0xFF == ord('q'):
+#             break
+
+#     ser.close()
+#     cv2.destroyAllWindows()
+
+# if __name__ == "__main__":
+#     main()
+
 import cv2
 import serial
 import numpy as np
 import time
 
-SERIAL_PORT = 'COM8' 
+# -------- CONFIG --------
+SERIAL_PORT = 'COM8'
 BAUD_RATE = 921600
 SYNC_BYTE = 0x55
-AMPLIFIER_GAIN = 10 
+IMAGE_PATH = r'D:\SIFT-FPGA-Basys3\data\image.png'
+AMPLIFIER_GAIN = 8
 
-# The exact sequence of sizes the FPGA will transmit
-# Octave 1 (3 scales of 128x128), Octave 2 (3 scales of 64x64)
-PYRAMID_DIMS = [(128, 128), (128, 128), (128, 128), (64, 64), (64, 64), (64, 64)]
+PYRAMID_DIMS = [
+    (128, 128), (128, 128), (128, 128),
+    (64, 64), (64, 64), (64, 64)
+]
+# ------------------------
 
 def wait_for_sync(ser):
-    start_time = time.time()
-    while time.time() - start_time < 1.0:
-        if ser.in_waiting > 0:
-            header = ser.read(1)
-            if header[0] == SYNC_BYTE:
-                return True
-    return False
+    while True:
+        b = ser.read(1)
+        if len(b) and b[0] == SYNC_BYTE:
+            return True
 
-def read_dog_frame(ser, dim_tuple):
-    w, h = dim_tuple
-    expected_bytes = w * h
-    
-    if not wait_for_sync(ser):
+def read_frame(ser, size):
+    wait_for_sync(ser)
+    data = ser.read(size)
+    if len(data) != size:
         return None
+    return data
 
-    raw_data = ser.read(expected_bytes)
-    if len(raw_data) != expected_bytes:
-        return None
-
-    # Convert, center, and amplify
-    dog_img = np.frombuffer(raw_data, dtype=np.uint8).reshape((h, w))
-    dog_signed = dog_img.astype(np.int16) - 128
-    dog_amplified = (dog_signed * AMPLIFIER_GAIN) + 128
-    dog_final = np.clip(dog_amplified, 0, 255).astype(np.uint8)
-    return dog_final
-
-def run_sift_bridge():
-    try:
-        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-        print(f"Connected to {SERIAL_PORT}")
-    except Exception as e:
-        print(f"Connection Error: {e}")
+def main():
+    # Load fixed image
+    img = cv2.imread(IMAGE_PATH, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        print("Image load failed")
         return
 
-    cap = cv2.VideoCapture(0)
+    img = cv2.resize(img, (128, 128), interpolation=cv2.INTER_AREA)
+    img[img == SYNC_BYTE] = 0x54  # sync protection
+
+    try:
+        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2)
+        print("Connected")
+    except Exception as e:
+        print("Serial error:", e)
+        return
+
     time.sleep(2)
 
     while True:
-        ret, frame = cap.read()
-        if not ret: break
+        # Clean buffer (VERY IMPORTANT)
+        ser.reset_input_buffer()
 
-        # Pre-process
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        resized = cv2.resize(gray, (128, 128), interpolation=cv2.INTER_AREA)
-        resized[resized == SYNC_BYTE] = 0x54 # Sync protection
-
-        # Transmit Base Image
+        # Send base image
         ser.write(bytearray([SYNC_BYTE]))
-        ser.write(resized.tobytes())
+        ser.write(img.tobytes())
 
-        # Receive the 6 Pyramid Layers
-        pyramid_frames = []
-        timeout_flag = False
-        
-        for dim in PYRAMID_DIMS:
-            dog = read_dog_frame(ser, dim)
-            if dog is None:
-                print(f"Timeout/Drop at dimension {dim}. Resetting.")
-                timeout_flag = True
+        pyramid = []
+        failed = False
+
+        for (w, h) in PYRAMID_DIMS:
+            raw = read_frame(ser, w * h)
+            if raw is None:
+                print("Frame drop")
+                failed = True
                 break
-            pyramid_frames.append(dog)
+            frame = np.frombuffer(raw, dtype=np.uint8).reshape((h, w))
+            pyramid.append(frame)
 
-        if not timeout_flag:
-            # Build the Display Grid
-            # Upscale the 64x64 Octave 2 images back to 128x128 for easy viewing
-            o1_s1, o1_s2, o1_s3 = pyramid_frames[0:3]
-            o2_s1 = cv2.resize(pyramid_frames[3], (128, 128), interpolation=cv2.INTER_NEAREST)
-            o2_s2 = cv2.resize(pyramid_frames[4], (128, 128), interpolation=cv2.INTER_NEAREST)
-            o2_s3 = cv2.resize(pyramid_frames[5], (128, 128), interpolation=cv2.INTER_NEAREST)
+        if failed:
+            continue
 
-            # Assemble Rows
-            top_row = np.hstack((resized, o1_s1, o1_s2, o1_s3))
-            bottom_row = np.hstack((np.zeros((128, 128), dtype=np.uint8), o2_s1, o2_s2, o2_s3))
-            grid = np.vstack((top_row, bottom_row))
+        # -------- TAKE ONLY FIRST DoG --------
+        dog = pyramid[0]
 
-            cv2.imshow('FPGA 2-Octave, 3-Scale DoG Pyramid', grid)
+        # -------- IDENTICAL PROCESSING --------
+        dog_signed = dog.astype(np.int16) - 128
+        dog_amp = dog_signed * AMPLIFIER_GAIN
+        dog_display = np.clip(dog_amp + 128, 0, 255).astype(np.uint8)
+        # -------------------------------------
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        combined = np.hstack((img, dog_display))
+        cv2.imshow("RTL2: Input | DoG1", combined)
+
+        if cv2.waitKey(0) & 0xFF == ord('q'):
             break
 
-    cap.release()
     ser.close()
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    run_sift_bridge()
+    main()
