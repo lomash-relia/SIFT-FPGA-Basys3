@@ -1,0 +1,25 @@
+FPGA = real-time front-end feature extractor
+Python = verification / prototyping layer
+
+These 10 patches all sit in the **northern lunar highlands**: a crater-rich, heavily textured part of the Moon where impact features are well preserved because the Moon has no liquid water or wind to erase them. NASA describes lunar craters as well-preserved records of impact history, and NASA/USGS note that the highlands are older, cratered crustal terrain with thick regolith and little or no mare material. ([NASA Science][1])
+
+So for your dataset, the “special” part is not that each patch has a unique famous name, but that they are all **feature-rich highland tiles** in a narrow longitude band around 26–28°E, which is exactly what helps DoG-based detection. Two of them are the Aristoteles neighborhood you identified earlier; the rest are nearby highland regions from the same strip. ([NASA Science][1])
+
+Here is a practical description of each region:
+
+1. **Region 0 — 41.798°N, 26.355°E**: southern end of your strip, still highland terrain, likely a mix of crater rims and inter-crater floor.
+2. **Region 1 — 53.513°N, 27.292°E**: near your **Aristoteles M** area, strong crater structure and good contrast.
+3. **Region 2 — 52.861°N, 26.828°E**: near your **Aristoteles N** area, also crater-rich and very useful for matching.
+4. **Region 3 — 60.122°N, 27.775°E**: northernmost patch, likely more rugged highland texture and shadow variation.
+5. **Region 4 — 42.843°N, 26.757°E**: southern highland patch, likely broader terrain with enough structure for feature extraction.
+6. **Region 5 — 50.091°N, 26.692°E**: central highlands, a good balanced region for stable matching.
+7. **Region 6 — 49.820°N, 27.082°E**: central highlands, similar to Region 5 but slightly east.
+8. **Region 7 — 41.266°N, 26.693°E**: another southern highland tile, useful if you want motion across the strip.
+9. **Region 8 — 58.807°N, 27.181°E**: upper-north highland patch, likely strong crater edges and shadows.
+10. **Region 9 — 46.797°N, 26.547°E**: lower-mid highlands, often a nice compromise between texture and stability.
+
+For your TRT/DoG+log-polar pipeline, the best-looking regions are usually **1, 2, 5, 6, and 8** because they are in the same cratered belt and tend to have strong local structure.
+
+[1]: https://science.nasa.gov/moon/lunar-craters/ "Moon Craters"
+[2]: Downloaded from https://chmapbrowse.issdc.gov.in/MapBrowse, CH2 TMC Calibrated Product - browse\calibrated\20240426\ch2_tmc_ncn_20240426T0455517041_b_brw_d18.png
+

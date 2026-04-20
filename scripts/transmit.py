@@ -383,7 +383,6 @@
 
 # ---------------------
 
-
 # import cv2
 # import serial
 # import numpy as np
@@ -394,6 +393,105 @@
 # BAUD_RATE = 921600
 # SYNC_BYTE = 0x55
 # IMAGE_PATH = r'D:\SIFT-FPGA-Basys3\data\image.png'
+# AMPLIFIER_GAIN = 8
+
+# PYRAMID_DIMS = [
+#     (128, 128), (128, 128), (128, 128),
+#     (64, 64), (64, 64), (64, 64)
+# ]
+# # ------------------------
+
+# def wait_for_sync(ser):
+#     while True:
+#         b = ser.read(1)
+#         if len(b) and b[0] == SYNC_BYTE:
+#             return True
+
+# def read_frame(ser, size):
+#     wait_for_sync(ser)
+#     data = ser.read(size)
+#     if len(data) != size:
+#         return None
+#     return data
+
+# def main():
+#     # Load fixed image
+#     img = cv2.imread(IMAGE_PATH, cv2.IMREAD_GRAYSCALE)
+#     if img is None:
+#         print("Image load failed")
+#         return
+
+#     img = cv2.resize(img, (128, 128), interpolation=cv2.INTER_AREA)
+#     img[img == SYNC_BYTE] = 0x54  # sync protection
+
+#     try:
+#         ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2)
+#         print("Connected")
+#     except Exception as e:
+#         print("Serial error:", e)
+#         return
+
+#     time.sleep(2)
+
+#     while True:
+#         # Clean buffer (VERY IMPORTANT)
+#         ser.reset_input_buffer()
+
+#         # Send base image
+#         ser.write(bytearray([SYNC_BYTE]))
+#         ser.write(img.tobytes())
+
+#         pyramid = []
+#         failed = False
+
+#         for (w, h) in PYRAMID_DIMS:
+#             raw = read_frame(ser, w * h)
+#             if raw is None:
+#                 print("Frame drop")
+#                 failed = True
+#                 break
+#             frame = np.frombuffer(raw, dtype=np.uint8).reshape((h, w))
+#             pyramid.append(frame)
+
+#         if failed:
+#             continue
+
+#         # -------- TAKE ONLY FIRST DoG --------
+#         dog = pyramid[0]
+
+#         # -------- IDENTICAL PROCESSING --------
+#         dog_signed = dog.astype(np.int16) - 128
+#         dog_amp = dog_signed * AMPLIFIER_GAIN
+#         dog_display = np.clip(dog_amp + 128, 0, 255).astype(np.uint8)
+#         # -------------------------------------
+
+#         combined = np.hstack((img, dog_display))
+#         cv2.imshow("RTL2: Input | DoG1", combined)
+
+#         if cv2.waitKey(0) & 0xFF == ord('q'):
+#             break
+
+#     ser.close()
+#     cv2.destroyAllWindows()
+
+# if __name__ == "__main__":
+#     main()
+
+
+###############
+
+
+# import cv2
+# import serial
+# import numpy as np
+# import time
+
+# # -------- CONFIG --------
+# SERIAL_PORT = 'COM8'
+# BAUD_RATE = 921600
+# SYNC_BYTE = 0x55
+# IMAGE_PATH = r'multi_region_dataset/region_02/frame_023.png'
+# TEMPLATE_PATH = r'multi_region_dataset\region_02\template.png'
 # AMPLIFIER_GAIN = 8
 # # ------------------------
 
@@ -458,23 +556,249 @@
 # if __name__ == "__main__":
 #     main()
 
+# import cv2
+# import serial
+# import numpy as np
+# import time
+# import os
+
+# # ==============================
+# # CONFIG
+# # ==============================
+
+# SERIAL_PORT = 'COM8'
+# BAUD_RATE = 921600
+# SYNC_BYTE = 0x55
+
+# REGION_DIR = r"D:\SIFT-FPGA-Basys3\multi_region_dataset\region_02"
+# TEMPLATE_PATH = os.path.join(REGION_DIR, "template.png")
+
+# FRAME_IDXS = list(range(0, 25, 3))
+# AMPLIFIER_GAIN = 8
+
+# OUT_DIR = os.path.join(REGION_DIR, "inference_results_final")
+# os.makedirs(OUT_DIR, exist_ok=True)
+
+# print("Saving results to:", OUT_DIR)
+
+# # ==============================
+# # SERIAL HELPERS
+# # ==============================
+
+# def wait_for_sync(ser):
+#     while True:
+#         b = ser.read(1)
+#         if len(b) and b[0] == SYNC_BYTE:
+#             return True
+
+# def preprocess_for_send(img):
+#     img = cv2.resize(img, (128, 128))
+#     img = img.copy()
+#     img[img == SYNC_BYTE] = 0x54
+#     return img
+
+# def send_and_receive(ser, img):
+#     ser.reset_input_buffer()
+#     ser.write(bytearray([SYNC_BYTE]) + img.tobytes())
+#     wait_for_sync(ser)
+
+#     raw = ser.read(128 * 128)
+#     if len(raw) != 128 * 128:
+#         return None
+
+#     return np.frombuffer(raw, dtype=np.uint8).reshape((128, 128))
+
+# # ==============================
+# # MATCHING PIPELINE (FINAL)
+# # ==============================
+
+# def prepare_for_matching(dog):
+#     # Option 2: absolute DoG
+#     dog = np.abs(dog.astype(np.float32) - 128.0)
+
+#     # smooth
+#     dog = cv2.GaussianBlur(dog, (5,5), 0)
+
+#     # normalize
+#     dog = cv2.normalize(dog, None, 0, 1, cv2.NORM_MINMAX)
+
+#     return dog
+
+# def apply_window(img):
+#     h, w = img.shape
+#     win = cv2.createHanningWindow((w, h), cv2.CV_32F)
+#     return img * win
+
+# def log_polar(img):
+#     h, w = img.shape
+#     center = (w//2, h//2)
+#     M = w / np.log(w/2)
+#     return cv2.logPolar(img, center, M,
+#                         cv2.INTER_LINEAR + cv2.WARP_FILL_OUTLIERS)
+
+# # ==============================
+# # DISPLAY HELPERS
+# # ==============================
+
+# def dog_display(dog):
+#     dog_signed = dog.astype(np.int16) - 128
+#     dog_amp = dog_signed * AMPLIFIER_GAIN
+#     return np.clip(dog_amp + 128, 0, 255).astype(np.uint8)
+
+# def add_label(img, text):
+#     img_color = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+#     cv2.rectangle(img_color, (0, 0), (128, 22), (0, 0, 0), -1)
+#     cv2.putText(img_color, text, (5, 16),
+#                 cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+#                 (255,255,255), 1, cv2.LINE_AA)
+#     return img_color
+
+# # ==============================
+# # MAIN
+# # ==============================
+
+# def main():
+
+#     template = cv2.imread(TEMPLATE_PATH, 0)
+#     if template is None:
+#         print("Template load failed")
+#         return
+
+#     template = preprocess_for_send(template)
+
+#     try:
+#         ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2)
+#         print("Connected to FPGA")
+#     except Exception as e:
+#         print("Serial error:", e)
+#         return
+
+#     time.sleep(2)
+
+#     # -------- TEMPLATE --------
+#     dog_t = send_and_receive(ser, template)
+#     if dog_t is None:
+#         print("Template DoG failed")
+#         return
+
+#     dog_t_sig = prepare_for_matching(dog_t)
+#     dog_t_sig = apply_window(dog_t_sig)
+#     lp_t = log_polar(dog_t_sig)
+
+#     dog_t_disp = dog_display(dog_t)
+
+#     # ==============================
+#     # LOOP
+#     # ==============================
+
+#     for idx in FRAME_IDXS:
+
+#         frame_path = os.path.join(REGION_DIR, f"frame_{idx:03d}.png")
+#         img = cv2.imread(frame_path, 0)
+
+#         if img is None:
+#             print("Load failed:", frame_path)
+#             continue
+
+#         img_send = preprocess_for_send(img)
+
+#         dog = send_and_receive(ser, img_send)
+#         if dog is None:
+#             print("Frame error")
+#             continue
+
+#         # -------- MATCHING --------
+#         dog_f_sig = prepare_for_matching(dog)
+#         dog_f_sig = apply_window(dog_f_sig)
+
+#         lp_f = log_polar(dog_f_sig)
+
+#         shift, response = cv2.phaseCorrelate(lp_f, lp_t)
+
+#         print(f"Frame {idx}: response={response:.3f}, shift={shift}")
+
+#         # -------- DISPLAY --------
+#         dog_disp = dog_display(dog)
+
+#         lp_f_disp = cv2.normalize(lp_f, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+#         lp_t_disp = cv2.normalize(lp_t, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+#         p1 = add_label(img_send, "Frame")
+#         p2 = add_label(template, "Template")
+
+#         p3 = add_label(dog_disp, "DoG Frame")
+#         p4 = add_label(dog_t_disp, "DoG Template")
+
+#         p5 = add_label(lp_f_disp, "Log-Polar Frame")
+#         p6 = add_label(lp_t_disp, "Log-Polar Template")
+
+#         row1 = np.hstack((p1, p2))
+#         row2 = np.hstack((p3, p4))
+#         row3 = np.hstack((p5, p6))
+
+#         combined = np.vstack((row1, row2, row3))
+
+#         # -------- TITLE + SCORE --------
+#         canvas = np.zeros((combined.shape[0] + 40, combined.shape[1], 3), dtype=np.uint8)
+#         canvas[40:] = combined
+
+#         color = (0,255,0) if response > 0.3 else (0,0,255)
+
+#         title = f"Frame {idx} | Score: {response:.3f}"
+#         cv2.putText(canvas, title, (10, 28),
+#                     cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+#                     color, 2, cv2.LINE_AA)
+
+#         # -------- SHOW --------
+#         cv2.imshow("TRN Matching (FINAL)", canvas)
+
+#         # -------- SAVE --------
+#         save_path = os.path.join(OUT_DIR, f"result_{idx:03d}.png")
+#         cv2.imwrite(save_path, canvas)
+
+#         print("Saved:", save_path)
+
+#         if cv2.waitKey(300) & 0xFF == ord('q'):
+#             break
+
+#     ser.close()
+#     cv2.destroyAllWindows()
+
+#     print("\nDONE")
+
+# # ==============================
+
+# if __name__ == "__main__":
+#     main()
+
+
 import cv2
 import serial
 import numpy as np
 import time
+import os
+import csv
+import matplotlib.pyplot as plt
 
-# -------- CONFIG --------
+# ==============================
+# CONFIG
+# ==============================
+
 SERIAL_PORT = 'COM8'
-BAUD_RATE = 921600
+BAUD_RATE = 2000000 # 921600
 SYNC_BYTE = 0x55
-IMAGE_PATH = r'D:\SIFT-FPGA-Basys3\data\image.png'
-AMPLIFIER_GAIN = 8
 
-PYRAMID_DIMS = [
-    (128, 128), (128, 128), (128, 128),
-    (64, 64), (64, 64), (64, 64)
-]
-# ------------------------
+DATASET_DIR = r"D:\SIFT-FPGA-Basys3\multi_region_dataset"
+OUT_DIR = r"D:\SIFT-FPGA-Basys3\fpga_evaluation"
+os.makedirs(OUT_DIR, exist_ok=True)
+
+NUM_REGIONS = 10
+FRAMES_PER_REGION = 25
+THRESHOLD = 0.5
+
+# ==============================
+# SERIAL
+# ==============================
 
 def wait_for_sync(ser):
     while True:
@@ -482,72 +806,162 @@ def wait_for_sync(ser):
         if len(b) and b[0] == SYNC_BYTE:
             return True
 
-def read_frame(ser, size):
+def preprocess_for_send(img):
+    img = cv2.resize(img, (128, 128))
+    img = img.copy()
+    img[img == SYNC_BYTE] = 0x54
+    return img
+
+def send_to_fpga(ser, img):
+    ser.reset_input_buffer()
+    ser.write(bytearray([SYNC_BYTE]) + img.tobytes())
     wait_for_sync(ser)
-    data = ser.read(size)
-    if len(data) != size:
+
+    raw = ser.read(128*128)
+    if len(raw) != 128*128:
         return None
-    return data
+
+    return np.frombuffer(raw, dtype=np.uint8).reshape((128,128))
+
+# ==============================
+# MATCHING SIGNAL (OPTION 2)
+# ==============================
+
+def prepare_for_matching(dog):
+    dog = np.abs(dog.astype(np.float32) - 128.0)
+    dog = cv2.GaussianBlur(dog, (5,5), 0)
+    dog = cv2.normalize(dog, None, 0, 1, cv2.NORM_MINMAX)
+    return dog
+
+# ==============================
+# AUGMENTATIONS
+# ==============================
+
+def add_noise(img):
+    noise = np.random.normal(0, 10, img.shape)
+    return np.clip(img + noise, 0, 255).astype(np.uint8)
+
+def rotate(img):
+    M = cv2.getRotationMatrix2D((64,64), 8, 1.0)
+    return cv2.warpAffine(img, M, (128,128),
+                          borderMode=cv2.BORDER_REFLECT)
+
+def change_brightness(img):
+    return np.clip(img * 1.2 + 10, 0, 255).astype(np.uint8)
+
+# ==============================
+# MAIN
+# ==============================
 
 def main():
-    # Load fixed image
-    img = cv2.imread(IMAGE_PATH, cv2.IMREAD_GRAYSCALE)
-    if img is None:
-        print("Image load failed")
-        return
 
-    img = cv2.resize(img, (128, 128), interpolation=cv2.INTER_AREA)
-    img[img == SYNC_BYTE] = 0x54  # sync protection
-
+    # connect FPGA
     try:
         ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2)
-        print("Connected")
+        print("Connected to FPGA")
     except Exception as e:
         print("Serial error:", e)
         return
 
     time.sleep(2)
 
-    while True:
-        # Clean buffer (VERY IMPORTANT)
-        ser.reset_input_buffer()
+    csv_path = os.path.join(OUT_DIR, "results.csv")
 
-        # Send base image
-        ser.write(bytearray([SYNC_BYTE]))
-        ser.write(img.tobytes())
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["region","frame","variant","score","decision"])
 
-        pyramid = []
-        failed = False
+        all_scores = []
 
-        for (w, h) in PYRAMID_DIMS:
-            raw = read_frame(ser, w * h)
-            if raw is None:
-                print("Frame drop")
-                failed = True
-                break
-            frame = np.frombuffer(raw, dtype=np.uint8).reshape((h, w))
-            pyramid.append(frame)
+        # ==============================
+        # LOOP ALL REGIONS
+        # ==============================
 
-        if failed:
-            continue
+        for r in range(NUM_REGIONS):
 
-        # -------- TAKE ONLY FIRST DoG --------
-        dog = pyramid[0]
+            print(f"\n--- REGION {r} ---")
 
-        # -------- IDENTICAL PROCESSING --------
-        dog_signed = dog.astype(np.int16) - 128
-        dog_amp = dog_signed * AMPLIFIER_GAIN
-        dog_display = np.clip(dog_amp + 128, 0, 255).astype(np.uint8)
-        # -------------------------------------
+            region_path = os.path.join(DATASET_DIR, f"region_{r:02d}")
 
-        combined = np.hstack((img, dog_display))
-        cv2.imshow("RTL2: Input | DoG1", combined)
+            template = cv2.imread(os.path.join(region_path, "template.png"), 0)
+            template = preprocess_for_send(template)
 
-        if cv2.waitKey(0) & 0xFF == ord('q'):
-            break
+            # FPGA DoG for template
+            dog_t = send_to_fpga(ser, template)
+            if dog_t is None:
+                print("Template FPGA error")
+                continue
+
+            template_sig = prepare_for_matching(dog_t)
+
+            region_scores = []
+
+            # ==============================
+            # LOOP FRAMES
+            # ==============================
+
+            for i in range(FRAMES_PER_REGION):
+
+                frame = cv2.imread(os.path.join(region_path, f"frame_{i:03d}.png"), 0)
+
+                variants = {
+                    "original": frame,
+                    "noise": add_noise(frame),
+                    "rotated": rotate(frame),
+                    "brightness": change_brightness(frame)
+                }
+
+                for name, var_img in variants.items():
+
+                    img_send = preprocess_for_send(var_img)
+
+                    # FPGA DoG
+                    dog = send_to_fpga(ser, img_send)
+                    if dog is None:
+                        print("FPGA error")
+                        continue
+
+                    frame_sig = prepare_for_matching(dog)
+
+                    # NCC
+                    res = cv2.matchTemplate(frame_sig, template_sig,
+                                            cv2.TM_CCOEFF_NORMED)
+                    score = float(res.max())
+
+                    decision = 1 if score > THRESHOLD else 0
+
+                    writer.writerow([r, i, name, score, decision])
+
+                    region_scores.append(score)
+                    all_scores.append(score)
+
+                    print(f"R{r} F{i} {name}: {score:.3f} -> {'MATCH' if decision else 'NO'}")
+
+            # plot per region
+            plt.figure()
+            plt.plot(region_scores)
+            plt.title(f"Region {r} Scores")
+            plt.ylim(0,1)
+            plt.savefig(os.path.join(OUT_DIR, f"region_{r:02d}.png"))
+            plt.close()
+
+    # ==============================
+    # GLOBAL PLOTS
+    # ==============================
+
+    all_scores = np.array(all_scores)
+
+    plt.figure()
+    plt.hist(all_scores, bins=30)
+    plt.title("NCC Score Distribution")
+    plt.savefig(os.path.join(OUT_DIR, "histogram.png"))
+    plt.close()
+
+    print("\nDONE. Results saved in:", OUT_DIR)
 
     ser.close()
-    cv2.destroyAllWindows()
+
+# ==============================
 
 if __name__ == "__main__":
     main()

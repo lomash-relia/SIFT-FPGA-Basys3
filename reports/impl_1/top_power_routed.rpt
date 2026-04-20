@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
 -------------------------------------------------------------------------------------------------------------------------------
 | Tool Version     : Vivado v.2022.2 (win64) Build 3671981 Fri Oct 14 05:00:03 MDT 2022
-| Date             : Sat Apr 18 14:53:22 2026
+| Date             : Mon Apr 20 20:35:24 2026
 | Host             : Lomash-HP running 64-bit major release  (build 9200)
 | Command          : report_power -file top_power_routed.rpt -pb top_power_summary_routed.pb -rpx top_power_routed.rpx
 | Design           : top
@@ -54,15 +54,15 @@ Table of Contents
 +--------------------------+-----------+----------+-----------+-----------------+
 | Clocks                   |     0.004 |        3 |       --- |             --- |
 | Slice Logic              |     0.004 |     1522 |       --- |             --- |
-|   LUT as Logic           |     0.003 |      551 |     20800 |            2.65 |
+|   LUT as Logic           |     0.003 |      554 |     20800 |            2.66 |
 |   LUT as Distributed RAM |    <0.001 |       96 |      9600 |            1.00 |
 |   CARRY4                 |    <0.001 |      119 |      8150 |            1.46 |
 |   Register               |    <0.001 |      540 |     41600 |            1.30 |
 |   F7/F8 Muxes            |    <0.001 |       48 |     32600 |            0.15 |
 |   Others                 |     0.000 |       30 |       --- |             --- |
 | Signals                  |     0.005 |     1189 |       --- |             --- |
-| Block RAM                |     0.009 |        9 |        50 |           18.00 |
-| I/O                      |     0.002 |       20 |       106 |           18.87 |
+| Block RAM                |     0.010 |        9 |        50 |           18.00 |
+| I/O                      |     0.001 |       20 |       106 |           18.87 |
 | Static Power             |     0.072 |          |           |                 |
 | Total                    |     0.095 |          |           |                 |
 +--------------------------+-----------+----------+-----------+-----------------+
@@ -74,9 +74,9 @@ Table of Contents
 +-----------+-------------+-----------+-------------+------------+-------------+-------------+------------+
 | Source    | Voltage (V) | Total (A) | Dynamic (A) | Static (A) | Powerup (A) | Budget (A)  | Margin (A) |
 +-----------+-------------+-----------+-------------+------------+-------------+-------------+------------+
-| Vccint    |       1.000 |     0.030 |       0.021 |      0.010 |       NA    | Unspecified | NA         |
+| Vccint    |       1.000 |     0.031 |       0.021 |      0.010 |       NA    | Unspecified | NA         |
 | Vccaux    |       1.800 |     0.013 |       0.000 |      0.013 |       NA    | Unspecified | NA         |
-| Vcco33    |       3.300 |     0.002 |       0.001 |      0.001 |       NA    | Unspecified | NA         |
+| Vcco33    |       3.300 |     0.001 |       0.000 |      0.001 |       NA    | Unspecified | NA         |
 | Vcco25    |       2.500 |     0.000 |       0.000 |      0.000 |       NA    | Unspecified | NA         |
 | Vcco18    |       1.800 |     0.000 |       0.000 |      0.000 |       NA    | Unspecified | NA         |
 | Vcco15    |       1.500 |     0.000 |       0.000 |      0.000 |       NA    | Unspecified | NA         |
@@ -146,7 +146,7 @@ Table of Contents
 | top             |     0.023 |
 |   core          |     0.015 |
 |     blur_pipe_1 |     0.008 |
-|       col_inst  |     0.005 |
+|       col_inst  |     0.006 |
 |       row_inst  |     0.002 |
 |     blur_pipe_2 |     0.007 |
 |       col_inst  |     0.005 |
