@@ -1,4 +1,4 @@
-# SIFT-FPGA-Basys3: DoG Hardware Pipeline
+# L-DoG Matcher on FPGA-Basys3: DoG Hardware Pipeline
 
 Hardware implementation of Difference of Gaussian (DoG) computation on Digilent Basys 3 FPGA.
 
@@ -16,7 +16,7 @@ Hardware implementation of Difference of Gaussian (DoG) computation on Digilent 
 
 - Receives 128×128 pixel frames via UART from laptop
 - Returns processed DoG results
-- UART: 921,600 baud
+- UART: 2000000 baud
 - Sync byte: `0x55`
 - Frame size: 1 + 16,384 bytes
 - Files: `top.v`, `uart_rx.v`, `uart_tx.v`, `input_buffer.v`, `output_buffer.v`, `dog_top.v`, `gaussian_blur_top.v`, `gaussian_row_conv.v`, `gaussian_col_conv.v`
