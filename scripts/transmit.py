@@ -772,6 +772,220 @@
 #     main()
 
 
+# import cv2
+# import serial
+# import numpy as np
+# import time
+# import os
+# import csv
+# import matplotlib.pyplot as plt
+# import sys
+# import io
+
+# # ==============================
+# # CONFIG
+# # ==============================
+
+# SERIAL_PORT = 'COM8'
+# BAUD_RATE = 2000000 # 921600
+# SYNC_BYTE = 0x55
+
+# DATASET_DIR = r"D:\SIFT-FPGA-Basys3\multi_region_dataset"
+# OUT_DIR = r"D:\SIFT-FPGA-Basys3\fpga_evaluation"
+# os.makedirs(OUT_DIR, exist_ok=True)
+
+# NUM_REGIONS = 10
+# FRAMES_PER_REGION = 25
+# THRESHOLD = 0.5
+
+# # ==============================
+# # TERMINAL LOGGING
+# # ==============================
+
+# class Tee:
+#     def __init__(self, *files):
+#         self.files = files
+#     def write(self, obj):
+#         for f in self.files:
+#             f.write(obj)
+#             f.flush()
+#     def flush(self):
+#         for f in self.files:
+#             f.flush()
+
+# log_file = open(os.path.join(OUT_DIR, "terminal_log.txt"), "w", encoding="utf-8")
+# sys.stdout = Tee(sys.stdout, log_file)
+
+# # ==============================
+# # SERIAL
+# # ==============================
+
+# def wait_for_sync(ser):
+#     while True:
+#         b = ser.read(1)
+#         if len(b) and b[0] == SYNC_BYTE:
+#             return True
+
+# def preprocess_for_send(img):
+#     img = cv2.resize(img, (128, 128))
+#     img = img.copy()
+#     img[img == SYNC_BYTE] = 0x54
+#     return img
+
+# def send_to_fpga(ser, img):
+#     ser.reset_input_buffer()
+#     ser.write(bytearray([SYNC_BYTE]) + img.tobytes())
+#     wait_for_sync(ser)
+
+#     raw = ser.read(128*128)
+#     if len(raw) != 128*128:
+#         return None
+
+#     return np.frombuffer(raw, dtype=np.uint8).reshape((128,128))
+
+# # ==============================
+# # MATCHING SIGNAL (OPTION 2)
+# # ==============================
+
+# def prepare_for_matching(dog):
+#     dog = np.abs(dog.astype(np.float32) - 128.0)
+#     dog = cv2.GaussianBlur(dog, (5,5), 0)
+#     dog = cv2.normalize(dog, None, 0, 1, cv2.NORM_MINMAX)
+#     return dog
+
+# # ==============================
+# # AUGMENTATIONS
+# # ==============================
+
+# def add_noise(img):
+#     noise = np.random.normal(0, 10, img.shape)
+#     return np.clip(img + noise, 0, 255).astype(np.uint8)
+
+# def rotate(img):
+#     M = cv2.getRotationMatrix2D((64,64), 8, 1.0)
+#     return cv2.warpAffine(img, M, (128,128),
+#                           borderMode=cv2.BORDER_REFLECT)
+
+# def change_brightness(img):
+#     return np.clip(img * 1.2 + 10, 0, 255).astype(np.uint8)
+
+# # ==============================
+# # MAIN
+# # ==============================
+
+# def main():
+
+#     # connect FPGA
+#     try:
+#         ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2)
+#         print("Connected to FPGA")
+#     except Exception as e:
+#         print("Serial error:", e)
+#         return
+
+#     time.sleep(2)
+
+#     csv_path = os.path.join(OUT_DIR, "results.csv")
+
+#     with open(csv_path, "w", newline="") as f:
+#         writer = csv.writer(f)
+#         writer.writerow(["region","frame","variant","score","decision"])
+
+#         all_scores = []
+
+#         # ==============================
+#         # LOOP ALL REGIONS
+#         # ==============================
+
+#         for r in range(NUM_REGIONS):
+
+#             print(f"\n--- REGION {r} ---")
+
+#             region_path = os.path.join(DATASET_DIR, f"region_{r:02d}")
+
+#             template = cv2.imread(os.path.join(region_path, "template.png"), 0)
+#             template = preprocess_for_send(template)
+
+#             # FPGA DoG for template
+#             dog_t = send_to_fpga(ser, template)
+#             if dog_t is None:
+#                 print("Template FPGA error")
+#                 continue
+
+#             template_sig = prepare_for_matching(dog_t)
+
+#             region_scores = []
+
+#             # ==============================
+#             # LOOP FRAMES
+#             # ==============================
+
+#             for i in range(FRAMES_PER_REGION):
+
+#                 frame = cv2.imread(os.path.join(region_path, f"frame_{i:03d}.png"), 0)
+
+#                 variants = {
+#                     "original": frame,
+#                     "noise": add_noise(frame),
+#                     "rotated": rotate(frame),
+#                     "brightness": change_brightness(frame)
+#                 }
+
+#                 for name, var_img in variants.items():
+
+#                     img_send = preprocess_for_send(var_img)
+
+#                     # FPGA DoG
+#                     dog = send_to_fpga(ser, img_send)
+#                     if dog is None:
+#                         print("FPGA error")
+#                         continue
+
+#                     frame_sig = prepare_for_matching(dog)
+
+#                     # NCC
+#                     res = cv2.matchTemplate(frame_sig, template_sig,
+#                                             cv2.TM_CCOEFF_NORMED)
+#                     score = float(res.max())
+
+#                     decision = 1 if score > THRESHOLD else 0
+
+#                     writer.writerow([r, i, name, score, decision])
+
+#                     region_scores.append(score)
+#                     all_scores.append(score)
+
+#                     print(f"R{r} F{i} {name}: {score:.3f} -> {'MATCH' if decision else 'NO'}")
+
+#             # plot per region
+#             plt.figure()
+#             plt.plot(region_scores)
+#             plt.title(f"Region {r} Scores")
+#             plt.ylim(0,1)
+#             plt.savefig(os.path.join(OUT_DIR, f"region_{r:02d}.png"))
+#             plt.close()
+
+#     # ==============================
+#     # GLOBAL PLOTS
+#     # ==============================
+
+#     all_scores = np.array(all_scores)
+
+#     plt.figure()
+#     plt.hist(all_scores, bins=30)
+#     plt.title("NCC Score Distribution")
+#     plt.savefig(os.path.join(OUT_DIR, "histogram.png"))
+#     plt.close()
+
+#     print("\nDONE. Results saved in:", OUT_DIR)
+
+#     ser.close()
+
+# # ==============================
+
+# if __name__ == "__main__":
+#     main()
+
 import cv2
 import serial
 import numpy as np
@@ -779,6 +993,8 @@ import time
 import os
 import csv
 import matplotlib.pyplot as plt
+import sys
+import io
 
 # ==============================
 # CONFIG
@@ -795,6 +1011,24 @@ os.makedirs(OUT_DIR, exist_ok=True)
 NUM_REGIONS = 10
 FRAMES_PER_REGION = 25
 THRESHOLD = 0.5
+
+# ==============================
+# TERMINAL LOGGING
+# ==============================
+
+class Tee:
+    def __init__(self, *files):
+        self.files = files
+    def write(self, obj):
+        for f in self.files:
+            f.write(obj)
+            f.flush()
+    def flush(self):
+        for f in self.files:
+            f.flush()
+
+log_file = open(os.path.join(OUT_DIR, "terminal_log.txt"), "w", encoding="utf-8")
+sys.stdout = Tee(sys.stdout, log_file)
 
 # ==============================
 # SERIAL
@@ -867,6 +1101,9 @@ def main():
 
     csv_path = os.path.join(OUT_DIR, "results.csv")
 
+    total_start_time = time.time()          # ← Overall timing start
+    all_processing_times = []               # To calculate average
+
     with open(csv_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["region","frame","variant","score","decision"])
@@ -880,6 +1117,7 @@ def main():
         for r in range(NUM_REGIONS):
 
             print(f"\n--- REGION {r} ---")
+            region_start_time = time.time()     # ← Per region timing
 
             region_path = os.path.join(DATASET_DIR, f"region_{r:02d}")
 
@@ -937,6 +1175,10 @@ def main():
 
                     print(f"R{r} F{i} {name}: {score:.3f} -> {'MATCH' if decision else 'NO'}")
 
+            # Per-region time
+            region_time = time.time() - region_start_time
+            print(f"Region {r} completed in {region_time:.2f} seconds")
+
             # plot per region
             plt.figure()
             plt.plot(region_scores)
@@ -946,9 +1188,24 @@ def main():
             plt.close()
 
     # ==============================
-    # GLOBAL PLOTS
+    # OVERALL TIMING & AVERAGE
     # ==============================
 
+    total_time = time.time() - total_start_time
+    avg_time_per_region = total_time / NUM_REGIONS if NUM_REGIONS > 0 else 0
+    total_variants = NUM_REGIONS * FRAMES_PER_REGION * 4
+    avg_time_per_variant = total_time / total_variants if total_variants > 0 else 0
+
+    print("\n" + "="*50)
+    print("TIMING SUMMARY")
+    print("="*50)
+    print(f"Total processing time          : {total_time:.2f} seconds")
+    print(f"Average time per region        : {avg_time_per_region:.2f} seconds")
+    print(f"Average time per variant       : {avg_time_per_variant:.3f} seconds")
+    print(f"Total variants processed       : {total_variants}")
+    print("="*50)
+
+    # Global plots
     all_scores = np.array(all_scores)
 
     plt.figure()
