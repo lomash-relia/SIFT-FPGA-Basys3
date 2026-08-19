@@ -986,6 +986,8 @@
 # if __name__ == "__main__":
 #     main()
 
+# -----
+
 import cv2
 import serial
 import numpy as np
@@ -1000,7 +1002,7 @@ import io
 # CONFIG
 # ==============================
 
-SERIAL_PORT = 'COM8'
+SERIAL_PORT = 'COM4'
 BAUD_RATE = 2000000 # 921600
 SYNC_BYTE = 0x55
 
@@ -1091,7 +1093,7 @@ def main():
 
     # connect FPGA
     try:
-        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2)
+        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=5)
         print("Connected to FPGA")
     except Exception as e:
         print("Serial error:", e)
